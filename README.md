@@ -1,31 +1,40 @@
 # Forty Pirates for Claude Code
 
-Your [Forty Pirates](https://fortypirates.com) travel workspace, from your terminal.
-Ask for what you saved, build a list or a map from place names, and organise what's
-already there — in plain language.
+Your travel workspace, in conversation. Ask what you've saved, build a list or a map
+of places just by naming them, and tidy up what's already there — in plain English.
 
-## Install
+## Get it
+
+Paste these two lines into Claude Code:
 
 ```
 /plugin marketplace add contextforce/fortypirates-skill
 /plugin install fortypirates-workspace@fortypirates
 ```
 
-## Connect (once)
+## First time
 
-The first time you ask about your workspace, you get a link. Open it, click
-**Allow**, and you're connected — nothing to copy, nothing to paste. The key is
-saved to `~/.config/fortypirates/token` and every later session uses it.
+Just ask it something. You'll get a link — open it, click **Allow**, done. Nothing to
+copy, nothing to set up, and you won't be asked again.
 
-No account yet? Sign up at [fortypirates.com](https://fortypirates.com) first.
+You'll need a free account at [fortypirates.com](https://fortypirates.com).
 
-## What you can ask
+## Try asking
 
-- *"What have I saved in Tokyo?"*
-- *"Make me a list of matcha cafés in Kyoto"*
-- *"Make a map of the best ramen in Shibuya"*
-- *"Add the Ghibli Museum to my Tokyo list"*
-- *"What's in my Japan list?"*
+> What have I saved in Tokyo?
 
-Lists you create are private to your account. Disconnect any time at
-[fortypirates.com/settings/cli](https://fortypirates.com/settings/cli).
+> Make me a list of matcha cafés in Kyoto
+
+> Make a map of the best ramen in Shibuya
+
+> Add the Ghibli Museum to my Tokyo list
+
+> What's in my Japan list?
+
+It finds the real places, saves them with photos, and gives you a link to open.
+
+## Your stuff stays yours
+
+Lists are private unless you share them. To disconnect Claude Code from your account,
+visit [fortypirates.com/settings/cli](https://fortypirates.com/settings/cli) and click
+disconnect — it stops working immediately.
