@@ -22,34 +22,42 @@ This skill reads and edits it over HTTP.
 
 ## Connecting (once per machine)
 
-Check first — most of the time this is already done:
-
-```bash
-node "$SKILL_DIR/scripts/connect.mjs" --status
-```
-
-If it reports `connected: false`, run the connect flow. It opens the user's browser,
-they click **Allow**, and the key is written to `~/.config/fortypirates/token`:
-
-```bash
-node "$SKILL_DIR/scripts/connect.mjs"
-```
-
-Tell the user what's about to happen ("I'll open your browser so you can approve
-access") and let it run — it prints the URL too, in case the browser doesn't open.
-On a machine with no browser at all, use `--show-url` and give them the link, or send
-them to **https://fortypirates.com/settings/cli** to create a key and paste it as
-`$FP_TOKEN`.
-
-Every command after that reads the saved key:
+Check first — usually already done:
 
 ```bash
 FP="${FP_TOKEN:-$(cat ~/.config/fortypirates/token 2>/dev/null)}"
+[ -n "$FP" ] && curl -s -o /dev/null -w '%{http_code}' -H "authorization: Bearer $FP" \
+  https://fortypirates.com/api/pirates/me   # 200 = connected, 401 = reconnect
 ```
 
-**Never print the key**, never echo it into a reply, never copy it anywhere but that
-file. A `401` means it was revoked or expired — re-run `connect.mjs`, don't retry the
-call.
+If there's no key, run the connect flow. It is three curls and no runtime:
+
+```bash
+# 1. ask for a code
+curl -s -X POST -H 'content-type: application/json' -d '{"name":"claude-code"}' \
+  https://fortypirates.com/api/cli/device
+# → { "deviceCode": "…", "userCode": "69YT-CKQ5",
+#     "verifyUrl": "https://fortypirates.com/cli-auth?code=69YT-CKQ5", "interval": 3 }
+```
+
+Show the user the **verifyUrl** and tell them to click **Allow** — nothing to copy,
+nothing to paste. Then poll with the `deviceCode` every few seconds:
+
+```bash
+# 2. poll until approved (max ~10 minutes; 410 means it expired, start over)
+curl -s "https://fortypirates.com/api/cli/device?code=$DEVICE_CODE"
+# → {"status":"pending"}  … then  {"status":"approved","token":"fp_pat_…"}
+```
+
+```bash
+# 3. save it — the key is handed over ONCE, so store it before doing anything else
+mkdir -p ~/.config/fortypirates && chmod 700 ~/.config/fortypirates
+printf '%s\n' "$TOKEN" > ~/.config/fortypirates/token && chmod 600 ~/.config/fortypirates/token
+```
+
+Every later command reads that file. **Never print the key**, never echo it into a
+reply, never write it anywhere else. A `401` means it was revoked or expired —
+reconnect, don't retry the call.
 
 ## Identity
 

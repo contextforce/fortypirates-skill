@@ -13,9 +13,9 @@ already there — in plain language.
 
 ## Connect (once)
 
-The first time you ask about your workspace, your browser opens and you click
-**Allow**. That's it — a key is saved to `~/.config/fortypirates/token` and every
-later session uses it.
+The first time you ask about your workspace, you get a link. Open it, click
+**Allow**, and you're connected — nothing to copy, nothing to paste. The key is
+saved to `~/.config/fortypirates/token` and every later session uses it.
 
 No account yet? Sign up at [fortypirates.com](https://fortypirates.com) first.
 
@@ -32,14 +32,5 @@ Lists you create are private to your account. Disconnect any time at
 
 ## No install, no dependencies
 
-The skill is plain HTTPS — every command is a `curl`. Nothing to install and nothing
-to keep updated.
-
-The only moving part is the one-time sign-in: a small script holds a local port so
-your browser can hand the key straight back, which needs Node (Claude Code usually
-brings its own). Without Node, create a key at
-[fortypirates.com/settings/cli](https://fortypirates.com/settings/cli) and set it once:
-
-```bash
-export FP_TOKEN=fp_pat_...
-```
+Every command is a `curl` — including signing in. Nothing to install, no runtime,
+nothing to keep updated.
