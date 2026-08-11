@@ -1,0 +1,13 @@
+{
+  "name": "fortypirates",
+  "owner": { "name": "Forty Pirates" },
+  "metadata": { "description": "Forty Pirates skills for Claude Code" },
+  "plugins": [
+    {
+      "name": "fortypirates-workspace",
+      "source": { "source": "github", "repo": "contextforce/fortypirates-skill" },
+      "description": "Your Forty Pirates travel workspace — saved places, lists and maps — from Claude Code.",
+      "version": "1.0.0"
+    }
+  ]
+}

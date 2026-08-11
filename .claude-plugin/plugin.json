@@ -1,0 +1,9 @@
+{
+  "name": "fortypirates-workspace",
+  "description": "Read and change your Forty Pirates travel workspace from Claude Code — search what you've saved, build lists and maps from place names, and organise them.",
+  "version": "1.0.0",
+  "author": { "name": "Forty Pirates" },
+  "homepage": "https://fortypirates.com",
+  "repository": "https://github.com/contextforce/fortypirates-skill",
+  "license": "MIT"
+}
