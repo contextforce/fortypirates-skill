@@ -30,6 +30,16 @@ No account yet? Sign up at [fortypirates.com](https://fortypirates.com) first.
 Lists you create are private to your account. Disconnect any time at
 [fortypirates.com/settings/cli](https://fortypirates.com/settings/cli).
 
-## Requirements
+## No install, no dependencies
 
-Node 18+ (for the one-time browser sign-in). Everything else is plain HTTPS.
+The skill is plain HTTPS — every command is a `curl`. Nothing to install and nothing
+to keep updated.
+
+The only moving part is the one-time sign-in: a small script holds a local port so
+your browser can hand the key straight back, which needs Node (Claude Code usually
+brings its own). Without Node, create a key at
+[fortypirates.com/settings/cli](https://fortypirates.com/settings/cli) and set it once:
+
+```bash
+export FP_TOKEN=fp_pat_...
+```
