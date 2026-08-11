@@ -29,8 +29,3 @@ No account yet? Sign up at [fortypirates.com](https://fortypirates.com) first.
 
 Lists you create are private to your account. Disconnect any time at
 [fortypirates.com/settings/cli](https://fortypirates.com/settings/cli).
-
-## No install, no dependencies
-
-Every command is a `curl` — including signing in. Nothing to install, no runtime,
-nothing to keep updated.
