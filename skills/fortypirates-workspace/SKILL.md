@@ -142,6 +142,22 @@ curl -s -X POST -H "authorization: Bearer $FP" -H 'content-type: application/jso
   resolves to New York. The response reports `searchedNear` per place, so check it
   before telling the user what you saved.
 
+- **Say WHY a place is on the list.** Each place can carry a `note`, and a source
+  if the note came from somewhere:
+
+  ```json
+  {"name":"Demon Slayer pilgrimage","near":"Japan","places":[
+    {"name":"柳生一刀石","city":"Nara","country":"Japan",
+     "note":"The split boulder where you can recreate Tanjiro's training scene.",
+     "sourceName":"Nara Tourism","sourceUrl":"https://www.visitnara.jp/"},
+    {"name":"Sensoji","city":"Tokyo",
+     "note":"Going here on day 2, early morning before the crowds."}]}
+  ```
+
+  A note WITH a source is a citation and is shown as that source's voice; a note
+  without one is the user's own. Cite when you got it from somewhere — don't
+  attribute your own reasoning to a publication.
+
 - **Cover image** defaults to the first place's photo. To choose your own, pass
   `coverImage` — **any image url works**; it is fetched and cached to R2, and the list
   stores the resulting key, so the cover never depends on someone else's host. A bare
