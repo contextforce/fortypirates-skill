@@ -33,38 +33,25 @@ You'll need a free account at [fortypirates.com](https://fortypirates.com).
 
 It finds the real places, saves them with photos, and gives you a link to open.
 
-## Using it somewhere other than Claude Code
+## Claude Desktop / claude.ai
 
-Claude Desktop, ChatGPT and other assistants connect through **MCP** instead of the
-plugin above. Same workspace, same abilities.
+No plugin needed — add it as a connector:
 
-1. Get a key at [fortypirates.com/settings/cli](https://fortypirates.com/settings/cli)
-   → **Create key**, and copy it.
-2. In your app, add a custom MCP connector:
+1. **Settings → Connectors → Add → Add custom connector**
+2. Fill in two fields:
 
    | | |
    |---|---|
+   | **Name** | `fortypirates` |
    | **URL** | `https://fortypirates.com/api/mcp` |
-   | **Header** | `Authorization: Bearer` *your key* |
 
-Claude Desktop can also be configured by hand — add this to its config file
-(*Settings → Developer → Edit Config*):
+3. Leave the OAuth fields under *Advanced settings* **empty** — they're optional and
+   not needed.
+4. Click **Add**. You'll be asked to sign in and click **Allow**, once.
 
-```json
-{
-  "mcpServers": {
-    "fortypirates": {
-      "url": "https://fortypirates.com/api/mcp",
-      "headers": { "Authorization": "Bearer PASTE_YOUR_KEY_HERE" }
-    }
-  }
-}
-```
+Then ask it the same things as above.
 
-Restart the app and ask it the same questions as above.
-
-> Some assistants only accept connectors that sign you in with a browser rather than
-> a key. Those can't connect yet — support is on the way.
+Other assistants that support MCP connectors work the same way: give them that URL.
 
 ## Your stuff stays yours
 
