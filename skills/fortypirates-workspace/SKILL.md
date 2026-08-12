@@ -158,6 +158,12 @@ curl -s -X POST -H "authorization: Bearer $FP" -H 'content-type: application/jso
   without one is the user's own. Cite when you got it from somewhere — don't
   attribute your own reasoning to a publication.
 
+  **`sourceUrl` must be the ARTICLE, not the site.** `https://www.visitnara.jp/`
+  proves nothing; `https://www.visitnara.jp/spots/detail/2094/` is where the claim
+  actually is, and it's the link a reader follows to check you. The favicon is
+  derived from the domain either way, so a homepage costs the reader everything
+  and saves you nothing.
+
 - **Cover image** defaults to the first place's photo. To choose your own, pass
   `coverImage` — **any image url works**; it is fetched and cached to R2, and the list
   stores the resulting key, so the cover never depends on someone else's host. A bare
