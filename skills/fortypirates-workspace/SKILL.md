@@ -128,8 +128,19 @@ curl -s -X POST -H "authorization: Bearer $FP" -H 'content-type: application/jso
   "notFound": [] }
 ```
 
-- **`near` matters.** "Blue Bottle" is a hundred cafés; "Blue Bottle" near Kyoto is one.
-  Pass the city as a string, or `{"lat":…,"lng":…}`.
+- **Say where each place is.** "Blue Bottle" is a hundred cafés. A list that sits in
+  one city can use `near`; a list that spans several must carry the location PER
+  PLACE, or the far-flung ones resolve to the wrong POI:
+
+  ```json
+  {"name":"Ghibli pilgrimage","places":[
+     {"name":"Ghibli Museum","city":"Mitaka","country":"Japan"},
+     {"name":"Ōkutama Lake","city":"Tokyo","country":"Japan"}]}
+  ```
+
+  `city` and `country` are optional per place, and `near` is the fallback for any
+  place that gives neither. The response reports `searchedNear` for each, so a wrong
+  match is explainable — check it before telling the user what you saved.
 - **Name the branch when you mean one** — "Kurasu Kyoto Stand", not "Kurasu". The lookup
   resolves what you asked for, so a vague name gets a vague answer.
 - **Don't ask permission first.** Making a list is cheap and reversible; propose the
