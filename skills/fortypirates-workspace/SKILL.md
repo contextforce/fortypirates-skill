@@ -103,116 +103,47 @@ curl -s -H "authorization: Bearer $FP" \
   https://fortypirates.com/api/profile/global-storefront/snapshot | jq '.stubs | length'
 ```
 
-## A list from place NAMES
+## Building a list
 
-The user asks for "a list of matcha cafes in Kyoto", "Tokyo restaurants", or "places to
-re-experience the anime Your Name". They are NOT asking you to search their workspace —
-they want a list of real places that may not be saved yet.
+A list holds **ingredients**, and a place is one kind of them. `type` decides what
+happens to each member:
 
-**Come up with the names yourself.** Use what you know; web-search when the subject is
-specific enough that guessing would be wrong (an anime's real filming locations, a
-chef's restaurants, a neighbourhood you don't know well). Then submit the names — the
-endpoint grounds each one to a real place with coordinates and a photo. One call grounds each name to a real place,
-saves it, builds the list, and hands back the URL:
+| type | what it is | what happens |
+|---|---|---|
+| `poi` (default) | a place | looked up and saved with a photo |
+| `me` | an ordered route through places | its `stops` are looked up, order kept |
+| `food` `tip` `activity` `product` `event` | a dish, a note, a thing to do | stored as given — nothing to look up |
+
+The minimum for any of them is a **name and a type**. A bare string is a place.
 
 ```bash
 curl -s -X POST -H "authorization: Bearer $FP" -H 'content-type: application/json' \
-  -d '{"name":"Kyoto matcha cafes","near":"Kyoto",
-       "places":["Ippodo Tea Kyoto Main Store","Tsujiri Gion Honten","Kagizen Yoshifusa"]}' \
+  -d '{"name":"Kyoto day","near":"Kyoto","ingredients":[
+        {"type":"poi","name":"Kaikado Cafe","city":"Kyoto",
+         "note":"Tin tea caddies, quiet upstairs room."},
+        {"type":"food","name":"Matcha parfait","poiRef":"Kaikado Cafe"},
+        {"type":"tip","name":"Go before 10am"},
+        {"type":"me","name":"Higashiyama morning","narrative":"Temples, then coffee.",
+         "stops":["Kiyomizu-dera","Yasaka Shrine"]},
+        "Nishiki Market"]}' \
   https://fortypirates.com/api/lists/from-names
 ```
 
-```json
-{ "url": "/@{username}/kyoto-matcha-cafes",
-  "saved": [{"query":"…","title":"…","placeId":"ChIJ…","address":"…"}],
-  "notFound": [] }
-```
+Returns `{url, saved[], experiences[], ingredients[], notFound[]}`.
 
-- **Say where each place is.** One rule: a place is a NAME, optionally with its own
-  `city` and `country`. `near` is the default for the ones that don't carry either.
-
-  ```json
-  {"name":"Your Name pilgrimage","near":"Tokyo","places":[
-     "Suga Shrine",
-     {"name":"Ghibli Museum","city":"Mitaka"},
-     {"name":"Blue Bottle","city":"Kobe","country":"Japan"}]}
-  ```
-
-  Without a city, a chain goes wherever Google ranks it — "Blue Bottle" alone
-  resolves to New York. The response reports `searchedNear` per place, so check it
-  before telling the user what you saved.
-
-- **Say WHY a place is on the list.** Each place can carry a `note`, and a source
-  if the note came from somewhere:
-
-  ```json
-  {"name":"Demon Slayer pilgrimage","near":"Japan","places":[
-    {"name":"柳生一刀石","city":"Nara","country":"Japan",
-     "note":"The split boulder where you can recreate Tanjiro's training scene.",
-     "sourceName":"Nara Tourism","sourceUrl":"https://www.visitnara.jp/"},
-    {"name":"Sensoji","city":"Tokyo",
-     "note":"Going here on day 2, early morning before the crowds."}]}
-  ```
-
-  A note WITH a source is a citation and is shown as that source's voice; a note
-  without one is the user's own. Cite when you got it from somewhere — don't
-  attribute your own reasoning to a publication.
-
-  **`sourceUrl` must be the ARTICLE, not the site.** `https://www.visitnara.jp/`
-  proves nothing; `https://www.visitnara.jp/spots/detail/2094/` is where the claim
-  actually is, and it's the link a reader follows to check you. The favicon is
-  derived from the domain either way, so a homepage costs the reader everything
-  and saves you nothing.
-
-- **Cover image** defaults to the first place's photo. To choose your own, pass
-  `coverImage` — **any image url works**; it is fetched and cached to R2, and the list
-  stores the resulting key, so the cover never depends on someone else's host. A bare
-  `media/…` key is accepted as-is, and `""` clears it. If the url can't be cached the
-  response says so in `coverNote` and falls back to the first place — check for it
-  rather than assuming your image was used. An append never repaints an existing
-  list's cover unless you ask.
-- Max 50 places per call. Grounding is sequential, so a long list takes a while.
-- The list is PRIVATE by default; the URL works for its owner.
-
-**Adding to an EXISTING list** is the same call with `listId` instead of `name` —
-"add the Ghibli Museum to my Tokyo list". Names ground the same way; membership unions,
-so re-adding something already there is harmless:
-
-```bash
-curl -s -X POST -H "authorization: Bearer $FP" -H 'content-type: application/json' \
-  -d '{"listId":"<id from /api/drawer/lists>","near":"Tokyo","places":["Ghibli Museum"]}' \
-  https://fortypirates.com/api/lists/from-names
-```
-
-**Removing by name** needs NO place lookup. The list already carries every member's id
-next to its name — read it, pick the matching one, send that id:
-
-```bash
-# 1. the list's own contents: {id, name} per ingredient
-curl -s -H "authorization: Bearer $FP" "https://fortypirates.com/api/lists/$USERNAME/$LIST_ID" \
-| jq '.ingredients | map({id, name})'
-
-# 2. remove the one that matched
-curl -s -X POST -H "authorization: Bearer $FP" -H 'content-type: application/json' \
-  -d "{\"lists\":[{\"id\":\"$LIST_ID\",\"name\":\"$LIST_NAME\",\"removeIds\":[\"<that id>\"]}]}" \
-  https://fortypirates.com/api/drawer/lists
-```
-
-Never call place-search to remove something — the id you need is already in the list.
-If two members match the name, ask which; if none do, say so rather than removing the
-nearest thing.
-
-**A map is the same list, opened on its map.** There is no separate endpoint and nothing
-extra to create — append `?view=map` to the url the call returned:
-
-```
-cards   https://fortypirates.com/@{username}/kyoto-matcha-cafes
-map     https://fortypirates.com/@{username}/kyoto-matcha-cafes?view=map
-```
-
-So "make me a map of X" and "make me a list of X" are one request; only the link you
-hand back differs. Give the map url when the user asked for a map, plotted a route, or
-said anything about where the places are relative to each other.
+- **Say where each place is.** `city`/`country` per place, or `near` as the default.
+  A chain with no city goes wherever Google ranks it — "Blue Bottle" alone lands in
+  New York. `searchedNear` in the response says what each was matched against.
+- **`note` says why it is on the list.** With `sourceName` + `sourceUrl` it renders as
+  that source's voice, linked, with the site's favicon; without them it is the user's
+  own note. Cite when it came from somewhere — and cite the ARTICLE, not the homepage.
+- **Adding to an existing list** is the same call with `listId` instead of `name`.
+- **Removing** takes the member's id via `removeIds` (see below). An experience's id
+  looks like `ing_me_…`; removing it leaves its places in the list.
+- **Cover image** defaults to the first place's photo; pass `coverImage` (any url — it
+  is cached) to choose, or `""` to clear. An append never repaints it.
+- Max 50 members. Only places are looked up, so a list of dishes and tips is instant.
+- The list is PRIVATE by default. Its map is the same url with `?view=map`.
 
 ## Lists — everything is `POST /api/drawer/lists`
 
