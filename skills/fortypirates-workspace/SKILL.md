@@ -128,25 +128,20 @@ curl -s -X POST -H "authorization: Bearer $FP" -H 'content-type: application/jso
   "notFound": [] }
 ```
 
-- **Say where each place is.** "Blue Bottle" is a hundred cafés. A list that sits in
-  one city can use `near`; a list that spans several must carry the location PER
-  PLACE, or the far-flung ones resolve to the wrong POI:
+- **Say where each place is.** One rule: a place is a NAME, optionally with its own
+  `city` and `country`. `near` is the default for the ones that don't carry either.
 
   ```json
-  {"name":"Ghibli pilgrimage","places":[
-     {"name":"Ghibli Museum","city":"Mitaka","country":"Japan"},
-     {"name":"Ōkutama Lake","city":"Tokyo","country":"Japan"}]}
+  {"name":"Your Name pilgrimage","near":"Tokyo","places":[
+     "Suga Shrine",
+     {"name":"Ghibli Museum","city":"Mitaka"},
+     {"name":"Blue Bottle","city":"Kobe","country":"Japan"}]}
   ```
 
-  `city` and `country` are optional per place, and `near` is the fallback for any
-  place that gives neither. The response reports `searchedNear` for each, so a wrong
-  match is explainable — check it before telling the user what you saved.
-- **Name the branch when you mean one** — "Kurasu Kyoto Stand", not "Kurasu". The lookup
-  resolves what you asked for, so a vague name gets a vague answer.
-- **Don't ask permission first.** Making a list is cheap and reversible; propose the
-  names only if the request is ambiguous about the place or the theme.
-- **Report what resolved**, and mention anything in `notFound` — those simply weren't
-  saved. A name that resolves to a different branch than intended is worth flagging too.
+  Without a city, a chain goes wherever Google ranks it — "Blue Bottle" alone
+  resolves to New York. The response reports `searchedNear` per place, so check it
+  before telling the user what you saved.
+
 - **Cover image** defaults to the first place's photo. To choose your own, pass
   `coverImage` — **any image url works**; it is fetched and cached to R2, and the list
   stores the resulting key, so the cover never depends on someone else's host. A bare
