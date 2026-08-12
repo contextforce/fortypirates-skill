@@ -49,6 +49,8 @@ No plugin needed — add it as a connector:
    not needed.
 4. Click **Add**. You'll be asked to sign in and click **Allow**, once.
 
+![Adding the connector](docs/add-connector.jpg)
+
 Then ask it the same things as above.
 
 Other assistants that support MCP connectors work the same way: give them that URL.
