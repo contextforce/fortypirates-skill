@@ -4,11 +4,15 @@ description: |
   Read and change the user's Forty Pirates workspace — their saved places, dishes, and
   experiences, and the lists those live in. Search what they've saved, list their
   lists, see what's in one, create a list, map or trip, move ingredients in and out of
-  it, arrange a trip's days, read a video or article into ingredients, and search places
-  other people shared.
+  it, put a list in order, arrange a trip's days, read a video or article into
+  ingredients, and search places other people shared. Also turns a movie, anime or show title into a saved map of its
+  real filming or pilgrimage locations, and how another MCP host connects to the
+  same tools.
   Use when the user asks about "my saved places", "my lists", "my workspace", "what did I
   save in Tokyo", "put that in my Japan list", "make me a map of…", "plan my Kyoto trip",
-  "what's good near Shibuya", "what places are in this video", or asks to organise,
+  "what's good near Shibuya", "what places are in this video", "where was Your Name
+  filmed", "anime pilgrimage spots for…", or "connect Forty
+  Pirates to Claude Desktop / add the MCP server", or asks to organise,
   find, or add to their own saved travel content. Plain HTTPS against fortypirates.com — no install.
 ---
 
@@ -94,8 +98,8 @@ curl -s -H "authorization: Bearer $FP" \
 ```
 
 `kind` is one of `poi` (a place), `item` (a dish or product tied to a place), `me`
-(a micro-experience — a walk, an afternoon), `tip`, `food`, `activity`, `product`,
-`event`, `collection`, `source`.
+(a micro-experience — a walk, an afternoon), `mention` (a creator's line about a
+place), `tip`, `food`, `activity`, `product`, `event`, `collection`, `source`.
 
 **The full snapshot** — only when you need fields the slim projection drops (tags,
 source attribution, mentions). It is 150–700 KB; never fetch it to answer "what did I
@@ -138,10 +142,13 @@ happens to each member:
 | type | what it is | what happens |
 |---|---|---|
 | `poi` (default) | a place | looked up and saved with a photo |
-| `me` | an ordered route through places | its `stops` are looked up, order kept |
-| `food` `tip` `activity` `product` `event` | a dish, a note, a thing to do | stored as given — nothing to look up |
+| `me` (or `experience`) | an ordered route through places | its `stops` are looked up, order kept; a `me` with no stops is dropped |
+| `food` `tip` `activity` `product` `event` `hotel` | a dish, a note, a thing to do, a place to stay | stored as given — nothing to look up |
 
 The minimum for any of them is a **name and a type**. A bare string is a place.
+Those are the only types read: any other `type` (or a member with no name) is
+**silently dropped**, so the call succeeds having saved less than you sent — count
+what came back in `saved`/`ingredients` rather than assuming.
 
 ```bash
 curl -s -X POST -H "authorization: Bearer $FP" -H 'content-type: application/json' \
@@ -189,7 +196,9 @@ curl -s -X POST "${H[@]}" \
   looks like `ing_me_…`; removing it leaves its places in the list.
 - **Cover image** defaults to the first place's photo; pass `coverImage` (any url — it
   is cached) to choose, or `""` to clear. An append never repaints it.
-- Max 50 members. Only places are looked up, so a list of dishes and tips is instant.
+- Max 50 **grounded places** per call — `poi` members and `me` stops; dishes and
+  tips don't count against it. Only places are looked up, so a list of dishes and
+  tips is instant.
 - The list is PRIVATE by default.
 
 ## Lists — everything is `POST /api/drawer/lists`
@@ -201,7 +210,7 @@ curl -s -H "authorization: Bearer $FP" https://fortypirates.com/api/drawer/lists
 | jq '.lists | map({id, name, count:(.ingredientIds|length)})'
 ```
 
-One endpoint does create, rename, add, remove, and delete — this is exactly what the web
+One endpoint does create, rename, add, remove, order, and delete — this is exactly what the web
 app itself calls, so anything it can do, you can do:
 
 ```bash
@@ -221,6 +230,12 @@ curl -s -X POST "${H[@]}" -d "{\"lists\":[{\"id\":\"$ID\",\"name\":\"Japan 2026\
 # rename — same shape, new name
 curl -s -X POST "${H[@]}" -d "{\"lists\":[{\"id\":\"$ID\",\"name\":\"Japan, spring\"}]}" $L
 
+# order the list — sequence is the members, in the order you want them shown
+curl -s -X POST "${H[@]}" -d "{\"lists\":[{\"id\":\"$ID\",\"name\":\"Japan 2026\",\"sequence\":[\"ChIJ…\",\"ing_me_…\"]}]}" $L
+
+# unorder it — an EMPTY array clears the sequence; omitting the field leaves it alone
+curl -s -X POST "${H[@]}" -d "{\"lists\":[{\"id\":\"$ID\",\"name\":\"Japan 2026\",\"sequence\":[]}]}" $L
+
 # delete the list — destructive, confirm with the user first
 curl -s -X POST "${H[@]}" -d "{\"deleteIds\":[\"$ID\"]}" $L
 ```
@@ -237,6 +252,23 @@ Three rules this endpoint enforces, each of which returns
 
 Every response returns the user's full list set, so read `.lists` back to confirm what
 changed instead of assuming.
+
+**Ordering a list — `sequence`.** A list is unordered by default. Send `sequence` with
+the member ids in the order you want and the list becomes *sequenced*: every card gets
+its position number and the map draws a route through the places in that order. Get the
+ids from a read first — `ingredientIds` on `/api/drawer/lists`, or `ingredients[]` on
+`/api/lists/{owner}/{id}`.
+
+- **Absent leaves it alone, `[]` clears it.** Only an empty array reverts the list to
+  unordered; omitting the field on an add or a rename never disturbs the order.
+- **The stored order is reconciled against membership on every read.** Ids that are no
+  longer members are dropped, a repeated id counts once, and members you left out are
+  appended at the end — so a partial order is legal and you never have to re-send the
+  whole list to move one place.
+- **A trip ignores it.** The plan owns the order of a trip's places; arrange its days
+  instead (below).
+- Reads carry it back: `.sequence` on both `/api/drawer/lists` and
+  `/api/lists/{owner}/{id}`, absent when the list is unordered.
 
 Reading one list's contents — resolves each member from its source document, so this is
 where the creator commentary and notes live:
@@ -323,17 +355,57 @@ You are the one arranging it: group by neighbourhood, keep travel between stops 
 temples and markets early, bars late. Read the schedule back and tell the user the shape
 of each day, not the JSON.
 
-## Searching places — what everyone else has shared
+## Discover — the public read side
 
-Everything above is the user's own workspace. `/api/discover/filter` is the other
+Everything above is the user's own workspace. The discover routes are the other
 direction: places, dishes and experiences other people published, out of the global
-storefront snapshot. No key needed. It is the same endpoint the trip planner's Nearby
-uses, so an agent and the app see one world.
+storefront snapshot. **No key needed** — these are public.
+
+Discover returns **ingredients** — a place, a dish, a tip, an activity — never
+entities. There is no anime or movie in the discover index; those live behind
+`/explore`. If the user asks for an anime's locations, see "Turning a title into
+places" below.
+
+### Filter — `GET` or `POST /api/discover/filter`
+
+The workhorse — the public search surface over the storefront snapshot. With
+`owner` it reads that creator's global snapshot; without it, the cross-owner
+discover aggregate.
+
+| param | type | what it does |
+|---|---|---|
+| `owner` | string | One creator's shelf instead of everyone's. Omit for the cross-owner aggregate. |
+| `chips` | comma-separated strings | Tag facets. OR within a prefix section, AND across sections. e.g. `city:tokyo`, `city:kyoto,city:osaka` (either city). Matched as **exact, lowercase keys** into the snapshot's own facets — no normalising. GET trims whitespace around the commas; POST does not trim at all, so a padded array element fails there. `city:Tokyo` or `city: tokyo` matches nothing on either verb, and when *every* chip is unknown the answer is **zero stubs**, not everything, with HTTP 200 and no error. One unknown chip among known ones is silently dropped, which quietly widens the result set. Take chips from the snapshot's facet list rather than building them from the user's words. |
+| `kinds` | comma-separated strings | `poi`, `mention`, `tip`, `item`, `food`, `activity`, `product`, `event`, `collection`, `me`, `source`. Default: all — including the kinds you may not want, so pass `kinds` explicitly. |
+| `q` | string | Free-text substring match on the stub's title, case-insensitive. |
+| `near` | `lat,lng` | Great-circle gate + nearest-first sort around this point. GET only takes the `"lat,lng"` string form. Effectively **poi-only**: any stub without `lat`/`lng` is dropped outright, and only `poi` stubs are geocoded — so `near` with `kinds=food`, `item` or `tip` returns near-zero results with HTTP 200. Search those by `chips`/`q` instead. |
+| `radiusMi` | number | Radius for `near`, in miles. **No default.** Omit it and there is no radius cap at all — you get the whole matching set sorted nearest-first, so a "nearby" answer built from it can include places on another continent. Always send it with `near`. (The 3-mile default belongs to the `search_places` MCP tool, not this route.) |
+| `limit` | number | Page size. |
+| `offset` | number | Skip this many before applying `limit`. |
+
+GET takes these as query parameters. POST takes the same fields as JSON, with two
+differences: `chips` and `kinds` are arrays, and `near` is an **object** —
+`{"lat":35.66,"lng":139.70,"radiusMi":3}`. There is no top-level `radiusMi` in the
+POST body and no `"lat,lng"` string parsing; a string `near` is passed through
+un-parsed and silently produces garbage, with no error: stubs without coordinates
+are dropped, every stub *with* coordinates gets a `NaN` distance, no radius cap
+applies, and the nearest-first sort compares `NaN` — so you get a full,
+arbitrarily-ordered set rather than an empty one.
+
+The array types matter too. `chips` and `kinds` are read only when they are
+arrays: `{"chips":"city:tokyo"}` becomes no chip filter at all (the whole
+snapshot) and `{"kinds":"poi"}` becomes all kinds. Both widen the result set
+silently. Always send them as arrays.
+
+Nothing else in the POST body is type-checked either — `q`, `limit` and `offset`
+are passed straight through. Send `q` as a string and `limit`/`offset` as
+numbers; a wrong type is not rejected with a 400, it throws inside the filter and
+comes back as a 500.
 
 ```bash
 # places in a city — chips are the storefront's own facets
 curl -s 'https://fortypirates.com/api/discover/filter?kinds=poi&chips=city:tokyo&limit=12' \
-| jq '.stubs | map({name:.title, lat, lng, creator:.source.creatorName})'
+| jq '.stubs | map({name:.title, lat, lng, creator:.source.creatorName})'  # creator may be null
 
 # what is NEAR here — within 3 miles of a point
 curl -s 'https://fortypirates.com/api/discover/filter?near=35.6595,139.7005&radiusMi=3&kinds=poi'
@@ -341,15 +413,270 @@ curl -s 'https://fortypirates.com/api/discover/filter?near=35.6595,139.7005&radi
 # dishes, experiences, tips
 curl -s 'https://fortypirates.com/api/discover/filter?kinds=food&chips=city:kyoto'
 
+# free-text title search
+curl -s 'https://fortypirates.com/api/discover/filter?q=ramen&kinds=food&limit=10'
+
 # one creator's shelf instead of everyone's
 curl -s 'https://fortypirates.com/api/discover/filter?owner=someone&kinds=poi'
+
+# same nearby query as POST — note `near` is an object, radiusMi lives inside it
+curl -s -X POST -H 'content-type: application/json' \
+  -d '{"kinds":["poi"],"near":{"lat":35.6595,"lng":139.7005,"radiusMi":3},"limit":12}' \
+  https://fortypirates.com/api/discover/filter
 ```
 
-- `stub.source.creatorName` is who shared it — say so when you report a place. A
-  recommendation with no voice behind it is just a pin.
+Returns `{ total, count, stubs[] }` — except when the snapshot is missing, where
+the body is `{ total: 0, stubs: [] }` with no `count`. Read the length of `stubs`
+rather than keying on `count`.
+
+An `owner` that does not exist reads a key that isn't there and returns that same
+`{ total: 0, stubs: [] }` with HTTP 200 — a misspelt handle is indistinguishable
+from a real creator with an empty shelf, so check the spelling before telling the
+user someone has saved nothing. A `500 { "error": "R2 unavailable" }` is the only
+hard failure. On GET, a non-numeric `radiusMi`, `limit` or `offset` is dropped
+rather than rejected, so `radiusMi=abc` silently removes the radius cap. `near`
+on GET must be two finite numbers, `lat,lng` — `near=Shibuya` or a lone
+`near=35.6` drops the whole geo gate and hands back the full newest-first set.
+
+`total` is the match count **before** `limit`/`offset`; `count` is the length of
+the page you were handed. With `limit=12` against 400 matches you get
+`total: 400, count: 12` — report the 12 you hold, say there are more, and page
+through with `offset` if the user wants them.
+
+Ordering: with `near` the page is sorted **nearest-first**; without it,
+**newest-written first**. There is no relevance ranking, so `?q=ramen&limit=10`
+hands back the ten most recently written matches — present it as recent, not as
+the best ten.
+
+Every stub carries `id`, `kind` and `ref`. `title`, `image`, `tags[]` and `brief`
+(the card blurb) are common but **optional** — a stub with no image or no tags is
+normal, and a missing `title` simply never matches `q`. `writtenAt` is what the
+default sort keys on, and `src` is the unresolved source token behind a missing
+creator name. `lat`/`lng` are there when the ingredient is a geocoded place
+(`poi`); dishes, tips and items generally have neither. `image` is sometimes a
+**bare R2 key** (`media/…`) and sometimes an
+already-absolute URL (a foreign thumbnail that was never rewritten). Prefix it
+only when it does **not** start with `http` — `https://cache.contextforce.com/<key>`
+in prod, `http://localhost:8787/api/cached-image/<key>` in dev. Prefixing a value
+that is already a URL renders nothing. It
+*sometimes* carries `source` with a `creatorName`: compacted snapshots replace the
+inline `source` with a token the filter route does not resolve, so roughly a third
+of stubs name a creator and the rest do not. The token is resolvable, just not
+here — `filter` returns stubs only, never the snapshot's `sources` map, so
+`src` can only be looked up through `GET /api/discover/snapshot` (below).
+
+- When a stub does carry `source.creatorName`, name that person when you report the
+  place — a recommendation with a voice behind it beats a bare pin. When it does
+  not, report the place without one; never guess a creator, and never call the
+  missing attribution an error.
 - These ids are other people's saves. To keep one for the user, add it **by name** with
   `add_to_list` or `create_list`, which grounds it into their own workspace.
 - It reads a snapshot, so it reflects the last rebuild rather than the last second.
+
+### Snapshot — `GET /api/discover/snapshot`
+
+The full bitmap + stubs blob the `/discover` page renders from. Large (hundreds
+of KB to several MB). Prefer `filter` unless you need the raw tag bitmaps for
+client-side filtering.
+
+| param | type | what it does |
+|---|---|---|
+| `owner` | string | One user's global snapshot. Omit for the cross-owner discover aggregate. |
+
+Supports ETag/If-None-Match; the response is edge-cached (`s-maxage=86400`).
+
+Returns `{ version, writtenAt, ownerUsername, slug, ingredientIds[], stubs{},
+sources?{}, tagsBase64{} }`. `ingredientIds` is bit-position order for the
+`tagsBase64` bitmaps and may name ids that are no longer in `stubs` — filter on
+`stubs[id]` rather than trusting the id list. `sources` is the deduped source map
+a stub's `src` token points into: prefer a stub's inline `source` when it has one
+and fall back to `sources[stub.src]`. This is the only public route that hands
+back that map, so it is how a creator name gets resolved for a stub `filter` left
+anonymous. It is absent on snapshots written before the map existed.
+
+A missing snapshot — including an unknown `owner` — comes back as HTTP 200 with a
+fully-shaped but empty body: `writtenAt: ""`, `ingredientIds: []`, `stubs: {}`,
+`tagsBase64: {}`. There is no `error` field to check, so test `ingredientIds.length`
+rather than looking for a failure. The one real error is
+`500 { "error": "R2 unavailable" }`.
+
+### Geo — `GET /api/discover/geo`
+
+A compact index for the atlas map: every `city:<slug>` rolled up to its mean
+POI coordinate and count. One `{lat, lng, n}` per slug — tiny compared to
+the full snapshot.
+
+Returns `{ writtenAt, slugs: { [slug]: { lat, lng, n, img? } } }`. No
+parameters. Edge-cached. `writtenAt` is only a real timestamp on the happy path —
+it comes back as `""` when the snapshot is missing and is absent entirely when the
+bucket is unbound, so don't treat it as always parseable. `img` follows the same
+bare-key-or-URL rule as a stub's `image`.
+
+## Turning a title into places
+
+This is a recipe, not an endpoint. When the user names a movie, anime or show and
+wants the places it was filmed at or based on, **your own web search does the
+finding** — on your tokens — and the API does the place lookup, photos and the
+shareable view.
+
+1. **Search the web** for the title plus "filming locations", "real locations",
+   or "pilgrimage spots". Read the top results. Each hit becomes a place with a
+   **name**, a **city**, and a **note** saying why it belongs (the scene, the
+   episode, what to look for).
+
+2. **Cite the source.** When a place came from an article, carry `sourceName`
+   (the site or author) and `sourceUrl` (the article, not the homepage) so it
+   renders in that source's voice with a link and a favicon.
+
+3. **Save the whole set in one call** with `POST /api/lists/from-names` — or the
+   MCP `create_list` tool, which calls the same thing. Pass `view: "map"` for a
+   pin map, or `view: "plan"` for a trip with days — `"trip"` is accepted as an
+   alias for `"plan"` on either surface. **Max 50 places per call**
+   (counting `poi` members and `me` stops; dishes and tips don't count) — over
+   that the whole request fails with `400 too many places (N); max 50` and
+   nothing is saved. For a longer set, create the list with the first 50 and
+   append the rest in further `add_to_list` calls.
+
+No Forty Pirates search is involved. No new endpoint. The API grounds each name
+to a real place, fetches a photo, and hands back a shareable link.
+
+### Worked example — Your Name (Kimi no Na wa)
+
+```bash
+# You searched the web and found these locations. Now save them:
+curl -s -X POST -H "authorization: Bearer $FP" -H 'content-type: application/json' \
+  -d '{
+    "name": "Your Name — real locations",
+    "view": "map",
+    "near": "Tokyo",
+    "ingredients": [
+      {"type":"poi", "name":"Suga Shrine", "city":"Tokyo",
+       "note":"The stairway where Taki and Mitsuha finally meet.",
+       "sourceName":"Japan Guide", "sourceUrl":"https://www.japan-guide.com/e/e2164.html"},
+      {"type":"poi", "name":"Café La Bohème Shinjuku", "city":"Tokyo",
+       "note":"The café where Okudera-senpai and Taki have their date."},
+      {"type":"poi", "name":"Hida Furukawa Station", "city":"Hida, Gifu",
+       "note":"Inspiration for the Itomori train station. The platform and plaza match the film frame for frame."},
+      {"type":"poi", "name":"Hida City Library", "city":"Hida, Gifu",
+       "note":"Where Taki researches the comet disaster."},
+      {"type":"poi", "name":"Lake Suwa", "city":"Suwa, Nagano",
+       "note":"Basis for the crater lake surrounding Itomori."}
+    ]
+  }' \
+  https://fortypirates.com/api/lists/from-names
+# → { url: "/@you/your-name-real-locations/map", listId: "…", saved: [...], notFound: [], … }
+```
+
+The response hands back `url` (the map), `listUrl`, `mapUrl` and `planUrl` — all
+three views of the same list. See "Building a list" above for the full shape.
+
+Partial success is normal and comes back as HTTP 200: any name the API could not
+ground to a real place lands in `notFound[]` while the rest are saved. Read
+`notFound` before reporting, and name the places that did not resolve instead of
+claiming the whole set was saved.
+
+## MCP — for hosts that are not Claude Code
+
+This skill is how Claude Code talks to the workspace. `POST /api/mcp` is how
+every other host does — Claude Desktop, claude.ai, ChatGPT, or any client that
+speaks MCP's Streamable HTTP transport. It is a route handler on the same app,
+not a second worker, so it shares the same auth, the same data and the same
+deploy.
+
+The transport is stateless JSON-RPC over POST: no session id, no SSE. Every
+request carries its own `Authorization: Bearer fp_pat_…` — the same key the
+skill already uses.
+
+`initialize`, `ping`, `tools/list`, `prompts/list`, `prompts/get` and the
+`resources/*` probes answer **without auth** — nothing there is user data, only
+the shape of what is on offer. `initialize` echoes the client's
+`protocolVersion` when it is one of `2024-11-05`, `2025-03-26`, `2025-06-18`, and
+otherwise answers `2024-11-05` rather than failing the handshake. `resources/list`
+and `resources/templates/list` come back empty on purpose — this server offers
+tools and prompts, not resources. Only `tools/call` needs the key.
+
+A tool that fails does **not** come back as a JSON-RPC error: it is a normal
+result with `isError: true` and the message as its text. So is an unknown tool
+name. Read `isError` — a `200` with an `error`-free envelope is not proof the
+call worked.
+
+### Available tools
+
+| tool | what it does |
+|---|---|
+| `search_saved_places` | Search what the user already saved — by name, kind, or both. |
+| `extract_from_url` | Read a video or article into ingredients. Nothing is saved. |
+| `my_lists` | The user's lists, with counts. A trip shows `isTrip`. |
+| `get_list` | What is inside one list — places, dishes, tips, experiences. |
+| `create_list` | Build a new list, map or trip from names. |
+| `add_to_list` | Add members to an existing list. |
+| `remove_from_list` | Remove one member by id. |
+| `delete_list` | Delete a whole list (destructive). |
+| `get_plan` | Read a trip's day-by-day schedule. |
+| `update_plan` | Put things on days — schedule, move, unschedule. |
+| `delete_plan` | Drop a trip's plan, turning it back into a plain list. |
+| `search_places` | Discover places other people shared — the public side. |
+
+These tools wrap the same workspace verbs documented above, but they are **not** a
+1:1 rename of the HTTP parameters. `search_places` takes `query`, `city`, `near`,
+`radiusMiles` (default 3) and a singular `kind` where the filter route takes `q`,
+`chips`, `radiusMi` and a plural `kinds`. A wrong argument
+name is silently ignored, not rejected — read `tools/list` for each tool's exact
+schema rather than translating from the HTTP section.
+
+### Connecting a host
+
+Add `https://fortypirates.com/api/mcp` as a remote MCP server (Claude Desktop and
+claude.ai call it a custom connector; other hosts call it a remote/HTTP MCP
+server) and give it the same `fp_pat_…` key from "Connecting (once per machine)"
+above as an `Authorization: Bearer` header. A host that can do OAuth instead needs
+no key: an unauthenticated call answers `401` with an RFC 9728 `WWW-Authenticate`
+header pointing at the resource metadata, and the host takes it from there.
+
+```bash
+# list available tools (no auth needed for the manifest)
+curl -s -X POST -H 'content-type: application/json' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' \
+  https://fortypirates.com/api/mcp
+
+# a plain GET answers the same manifest, for a host (or a human) that probes first
+curl -s https://fortypirates.com/api/mcp
+# → { name, version, transport: "streamable-http", protocolVersion, tools: [ …names ] }
+```
+
+### This procedure, as an MCP prompt
+
+The host also gets this document. `prompts/list` offers one prompt,
+`fortypirates-workspace`, with no arguments, and `prompts/get` returns the body of
+this skill as a user message — so a client with no access to this repo can still
+pick it and follow it.
+
+```bash
+curl -s -X POST -H 'content-type: application/json' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"prompts/get","params":{"name":"fortypirates-workspace"}}' \
+  https://fortypirates.com/api/mcp
+```
+
+A prompt is **user-invoked**, never model-invoked: it makes the procedure
+available to somebody who asks for it and will never fire on its own. The body is
+read from R2 at request time, so it is whatever was last synced there rather than
+whatever this file says today; an unsynced prompt answers
+`-32602 Unknown or unavailable prompt` instead of a stale guess.
+
+## Whose search, whose extraction
+
+If you already have web search or page fetch, use yours. The user's workspace
+API is free infrastructure: saving, listing, arranging, sharing — none of that
+costs extraction budget.
+
+Forty Pirates' own `extract_from_url` (or the equivalent
+`POST /api/content/extract-shape`) is the fallback for what nothing else can do:
+reading a TikTok, Instagram reel, or YouTube video that most models cannot watch
+or fetch. When the user pastes a social video link and you have no way to read it
+yourself, that is when extraction earns its keep.
+
+The boundary is capability, not price. Extraction may be limited in future, so
+prefer your own tools when they can reach the content.
 
 ## Rules
 
