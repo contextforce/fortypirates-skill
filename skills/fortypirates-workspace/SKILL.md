@@ -5,9 +5,10 @@ description: |
   experiences, and the lists those live in. Search what they've saved, list their
   lists, see what's in one, create a list, map or trip, move ingredients in and out of
   it, put a list in order, arrange a trip's days, read a video or article into
-  ingredients, and search places other people shared. Also turns a movie, anime or show title into a saved map of its
-  real filming or pilgrimage locations, and how another MCP host connects to the
-  same tools.
+  ingredients, and search places other people shared. Holds the real pilgrimage
+  locations for 280 anime — look a title up before searching the web — and turns
+  any other movie or show title into a saved map of its filming locations. Also
+  covers how another MCP host connects to the same tools.
   Use when the user asks about "my saved places", "my lists", "my workspace", "what did I
   save in Tokyo", "put that in my Japan list", "make me a map of…", "plan my Kyoto trip",
   "what's good near Shibuya", "what places are in this video", "where was Your Name
@@ -65,6 +66,12 @@ printf '%s\n' "$TOKEN" > ~/.config/fortypirates/token && chmod 600 ~/.config/for
 Every later command reads that file. **Never print the key**, never echo it into a
 reply, never write it anywhere else. A `401` means it was revoked or expired —
 reconnect, don't retry the call.
+
+**Setting someone up from scratch?** `SETUP_PROMPT.md` beside this file is written for
+YOU, not for them: it names the exact install for each client, says which steps only a
+human can do (signing in, clicking Allow), and — the part worth keeping — refuses to let
+you call the setup done until `whoami` returns the account they expected. A 200 proves a
+server answered; it does not prove the right account did.
 
 ## Identity
 
@@ -154,7 +161,12 @@ what came back in `saved`/`ingredients` rather than assuming.
 curl -s -X POST -H "authorization: Bearer $FP" -H 'content-type: application/json' \
   -d '{"name":"Kyoto day","near":"Kyoto","ingredients":[
         {"type":"poi","name":"Kaikado Cafe","city":"Kyoto",
-         "note":"Tin tea caddies, quiet upstairs room."},
+         "image":"https://example.com/my-photo.jpg",
+         "notes":[{"text":"Tin tea caddies, quiet upstairs room.",
+                   "source":{"url":"https://example.com/kyoto-cafes",
+                             "title":"Kyoto coffee guide","author":"A. Writer",
+                             "publishedAt":"2026-03-04"},
+                   "image":"https://example.com/the-caddies.jpg"}]},
         {"type":"food","name":"Matcha parfait","poiRef":"Kaikado Cafe"},
         {"type":"tip","name":"Go before 10am"},
         {"type":"me","name":"Higashiyama morning","narrative":"Temples, then coffee.",
@@ -165,7 +177,7 @@ curl -s -X POST -H "authorization: Bearer $FP" -H 'content-type: application/jso
 
 Returns `{url, listUrl, mapUrl, planUrl, view, listId, saved[], experiences[], ingredients[], notFound[]}`.
 
-**One box, three doors.** A list, its map and a trip are the same thing opened
+**One box, many doors.** A list, its map and a trip are the same thing opened
 differently. `view` picks which url comes back as `url`; all three always come back, so
 offering the other view costs nothing.
 
@@ -188,9 +200,16 @@ curl -s -X POST "${H[@]}" \
 - **Say where each place is.** `city`/`country` per place, or `near` as the default.
   A chain with no city goes wherever Google ranks it — "Blue Bottle" alone lands in
   New York. `searchedNear` in the response says what each was matched against.
-- **`note` says why it is on the list.** With `sourceName` + `sourceUrl` it renders as
-  that source's voice, linked, with the site's favicon; without them it is the user's
-  own note. Cite when it came from somewhere — and cite the ARTICLE, not the homepage.
+- **`note` says why it is on the list, and `source` says where you found it.** A note
+  with a source renders as the user's own words with "found at Eater LA" under them,
+  linked, with the site's favicon. A citation is the USER's claim about where they read
+  something — it never becomes a creator's voice, so a place someone cited never looks
+  like a place a creator vouched for. Cite the ARTICLE, not the homepage.
+- **`image` is a photograph of the place**, and it outranks the Google photo on the
+  card and leads the gallery. Pass a url and it is fetched and stored as our own copy
+  before anything is written — the url you pass is never persisted, because a signed
+  or hotlinked url dies and a dead image is indistinguishable from a broken one. For a
+  photo with no url, upload it first (below) and pass the key you get back.
 - **Adding to an existing list** is the same call with `listId` instead of `name`.
 - **Removing** takes the member's id via `removeIds` (see below). An experience's id
   looks like `ing_me_…`; removing it leaves its places in the list.
@@ -236,6 +255,12 @@ curl -s -X POST "${H[@]}" -d "{\"lists\":[{\"id\":\"$ID\",\"name\":\"Japan 2026\
 # unorder it — an EMPTY array clears the sequence; omitting the field leaves it alone
 curl -s -X POST "${H[@]}" -d "{\"lists\":[{\"id\":\"$ID\",\"name\":\"Japan 2026\",\"sequence\":[]}]}" $L
 
+# a note on a place, with where you found it and a photograph of it
+curl -s -X POST "${H[@]}" -d "{\"lists\":[{\"id\":\"$ID\",\"name\":\"Japan 2026\",\"notes\":[
+  {\"placeId\":\"ChIJ…\",\"highlight\":\"The lamb is the thing.\",
+   \"source\":{\"url\":\"https://eater.com/…\",\"title\":\"Eater LA\",\"author\":\"A. Writer\"},
+   \"image\":\"https://example.com/my-photo.jpg\"}]}]}" $L
+
 # delete the list — destructive, confirm with the user first
 curl -s -X POST "${H[@]}" -d "{\"deleteIds\":[\"$ID\"]}" $L
 ```
@@ -269,6 +294,87 @@ ids from a read first — `ingredientIds` on `/api/drawer/lists`, or `ingredient
   instead (below).
 - Reads carry it back: `.sequence` on both `/api/drawer/lists` and
   `/api/lists/{owner}/{id}`, absent when the list is unordered.
+
+### A photograph with no url — upload it
+
+```bash
+curl -s -X POST -H "authorization: Bearer $FP" -H 'content-type: image/jpeg' \
+  --data-binary @photo.jpg https://fortypirates.com/api/images/upload
+# → { "key": "media/cached-image_<sha>.jpg", "bytes": 482113, "deduped": false }
+```
+
+Pass that `key` anywhere an `image` is taken — a note, a place on
+`/api/lists/from-names`, a `coverImage`. It is already our own copy, so nothing is
+fetched again. `image/jpeg|png|webp|gif|heic` only, 12 MB max; the same photograph
+uploaded twice is stored once and returns the same key.
+
+**Never store a url you were handed as if it were an image we own.** Pass it as `image`
+and let the write path cache it, or upload the bytes. A signed Google or Instagram url
+expires, and a dead url and a broken proxy look identical from the far end.
+
+## What kind of box it is — `kind`
+
+Six kinds, and they are **views over one box plus a behaviour flag**. Nothing new is
+stored per kind, nothing is copied, and switching a kind never moves a place. Set it on
+create or any later write to `POST /api/drawer/lists`:
+
+```bash
+curl -s -X POST "${H[@]}" \
+  -d "{\"lists\":[{\"id\":\"$ID\",\"name\":\"Best ramen in Tokyo\",\"kind\":\"ranked\",
+        \"sequence\":[\"ChIJ…\",\"ChIJ…\"]}]}" $L
+```
+
+| `kind` | what it is FOR | opens as |
+|---|---|---|
+| `list` | an unordered set — the order carries no meaning | list |
+| `ranked` | ordered by **judgement**: best first. An opinion, not a path | ranked |
+| `route` | ordered by **geography**: the order you would travel it, drawn on the map as a line | route |
+| `trip` | a route with a schedule — days, and places placed on them | trip |
+| `poll` | a set people vote on. With `autoRank: true` the votes decide the order | ranked |
+| `group` | a set several people edit together | list |
+| `event` | a set with a date and an invitation — people RSVP | list |
+
+**`ranked` vs `route` is the choice to get right.** Both are ordered and they use the
+same `sequence` field, so nothing stops you picking either — but they mean opposite
+things. "The ten best bakeries" is `ranked`: #1 is the best one, and drawing a line
+through them produces a nonsense journey. "Saturday in Shimokitazawa" is `route`: the
+order is where you walk, and calling the first stop "the best" is a claim nobody made.
+If the order came from an *opinion*, it is `ranked`; if it came from a *map*, it is
+`route`.
+
+- **`defaultView`** overrides how it opens — `list`, `ranked`, `route` or `trip`. Omit
+  it and the kind decides (a poll opens ranked, a group opens as a list). Send it only
+  when you want a presentation the kind does not imply.
+- **An unknown kind is a `400`** naming the valid ones, not a box that opens blank. The
+  same for an unknown `defaultView`. Nothing in the request is written when one fails.
+- **A kind is never a permission.** Private/friends/public, comments and voting are
+  share settings and live in the share sheet. Making a box `group` does not let anyone
+  in; it says what the box is, not who may see it.
+- **The order of a ranked list and the order of a route are separate.** `sequences`
+  keys one order per lens — `{"sequences":{"ranked":[…]}}` leaves the route's order
+  alone, and the reverse. `sequence` stays the box's order of record for everything
+  else.
+
+### Polls, votes and RSVPs
+
+All PAT-reachable, all on the box:
+
+```bash
+B=https://fortypirates.com/api/box/$ID
+
+# what people have said — comments, votes, rsvps (participants only)
+curl -s -H "authorization: Bearer $FP" $B/engagement
+
+# the ballots over this box
+curl -s -H "authorization: Bearer $FP" $B/polls
+
+# an invitation's guest list, and answering one
+curl -s -X POST "${H[@]}" -d '{"eventId":"evt_…","answer":"going","plus":1}' $B/rsvp
+```
+
+`answer` is `going` | `maybe` | `no`, or `null` to withdraw. Voting and RSVPs need the
+box's engagement setting on — a box that is not taking answers replies `403`, and that
+is the share sheet's decision, not something the kind can grant.
 
 Reading one list's contents — resolves each member from its source document, so this is
 where the creator commentary and notes live:
@@ -355,6 +461,115 @@ You are the one arranging it: group by neighbourhood, keep travel between stops 
 temples and markets early, bars late. Read the schedule back and tell the user the shape
 of each day, not the JSON.
 
+## Friends, creators, and where they have been
+
+**The question no other travel tool can answer.** The user's friends have marked places
+been and wished for; the creators they follow have their whole storefront on the map.
+When someone asks "where should I eat in Kyoto", the honest answer starts with who they
+trust, not with a ranking of strangers.
+
+Everything here is read with the user's key and answers **as the user**. There is no
+parameter anywhere that names another person's graph: the audience is read from the
+user's own record on every request. That is deliberate and permanent — a handle you
+could pass would make this an oracle on a private graph.
+
+```bash
+# who they are connected to
+curl -s -H "authorization: Bearer $FP" https://fortypirates.com/api/friends
+curl -s -H "authorization: Bearer $FP" https://fortypirates.com/api/following
+
+# the merged map: everyone's marks laid over the user's own
+curl -s -H "authorization: Bearer $FP" https://fortypirates.com/api/map/friends
+
+# ONE CITY, server-side — this is the call to make for "in Kyoto"
+curl -s -H "authorization: Bearer $FP" \
+  'https://fortypirates.com/api/map/friends?city=kyoto' \
+| jq '{n:.scopedCount, places:[.merged|to_entries[]|{id:.key, up:.value.up, wish:.value.wish}]}'
+```
+
+`/api/map/friends` answers **ids and states, with the details in a side table** — that
+shape is the point. `merged` is `{placeId: {flags[], wish, been, up, down}}`, `places`
+carries one record per place, and `people` one per person. Ten friends marking one cafe
+costs ten small flags and a single place record, so asking "which of these do my friends
+rate" never means pulling a payload per place. To go from a placeId back to a card, read
+`places[placeId]`, or `/api/discover/filter` for the full ingredient.
+
+**The states.**
+
+| state | what it means |
+|---|---|
+| `been+` | they went, and they rate it |
+| `been-` | they went, and they do not. **Evidence, not absence** — keep it |
+| `been` | they went, no verdict |
+| `wish` | they want to go |
+| `mutual` | the ✦ set: places the user AND someone else both wish for |
+
+**A handle is not a person.** `people[username].kind` is `friend`, `following` or `me`,
+and the response lists `friends[]` and `following[]` separately for exactly this reason:
+*"@eatLA has been"* is a different claim from *"Mia has been"* — one is a publication,
+the other is someone the user knows. Never collapse them into one count, and never say
+"3 friends" when two of them are creators.
+
+**Scoping.** `?city=kyoto` (matched against city, area and address) or
+`?bbox=minLng,minLat,maxLng,maxLat`; both together is an intersection. The response adds
+`scope` and `scopedCount`. Always scope when the question is about a place — the
+unscoped map is the user's whole world and will not fit in your context.
+
+### What everyone you follow recommends — one call
+
+```bash
+curl -s -H "authorization: Bearer $FP" \
+  'https://fortypirates.com/api/map/creators?city=tokyo' \
+| jq '.places | to_entries[] | {name:.value.name, by:.value.by, notes:.value.notes}'
+```
+
+The plural of the per-creator call below, and the one to reach for when the user
+names nobody. Reading `/api/following` and then looping one request per handle is
+thirty-one round trips for someone following thirty people — a question that takes a
+loop to ask is one you will not ask.
+
+**One entry per place, with `by` naming who marked it.** Two creators on the same
+cafe is the signal worth having — independent agreement — and the response sorts on
+it, most-backed first. `notes` carries each creator's own sentence about the place,
+keyed by handle.
+
+A creator's `been-` is a verdict *against* a place; it never arrives here as a
+recommendation. Same `?city=` / `?bbox=` scoping, and `?limit=` (default 60).
+
+### One creator's recommendations
+
+```bash
+curl -s -H "authorization: Bearer $FP" \
+  'https://fortypirates.com/api/map/creator/abroad-in-japan?city=tokyo' \
+| jq '{n:.scopedCount, places:[.places|to_entries[]|.value.name]}'
+```
+
+Every place on that creator's storefront, as `been+` with their own sentence, plus their
+`routes` — the days out they published. Same `?city=` / `?bbox=` scoping. Their map is
+derived from what they published, so this is public information about a public shelf.
+
+**`derived: false` means they have no published shelf.** The storefront map is written
+when a storefront is published, so a creator who marks places publicly without
+publishing one has none — the response then falls back to their PUBLIC marks and says
+so. Same data class either way; only the richness differs (no `routes`).
+
+### Recommendations — `GET /api/recommendations`
+
+```bash
+curl -s -H "authorization: Bearer $FP" \
+  'https://fortypirates.com/api/recommendations?city=kyoto&limit=15' \
+| jq '.items[] | {name, score, why, friends, creators}'
+```
+
+Read-only. Ranks places the user has **not been** using friend and expert signal: a
+friend's verdict weighs most, a friend's `been-` subtracts, a followed creator counts and
+counts *as a creator*, and a place already on the user's own wish list ranks up. Each
+item carries `why` — the reason in plain words — and the `friends[]` / `creators[]` who
+back it, so you can say "Mia and Sam went" instead of "3 people".
+
+It is filtered by the same graph the UI uses and cannot see further: a stranger's saves
+never appear and never influence a score, because a stranger's record is never read.
+
 ## Discover — the public read side
 
 Everything above is the user's own workspace. The discover routes are the other
@@ -362,9 +577,9 @@ direction: places, dishes and experiences other people published, out of the glo
 storefront snapshot. **No key needed** — these are public.
 
 Discover returns **ingredients** — a place, a dish, a tip, an activity — never
-entities. There is no anime or movie in the discover index; those live behind
-`/explore`. If the user asks for an anime's locations, see "Turning a title into
-places" below.
+entities. An anime is not an ingredient, so `filter` will never return one; its
+locations have their own two routes, described in "Anime locations" below. Ask
+there first when the user names a title.
 
 ### Filter — `GET` or `POST /api/discover/filter`
 
@@ -512,12 +727,52 @@ it comes back as `""` when the snapshot is missing and is absent entirely when t
 bucket is unbound, so don't treat it as always parseable. `img` follows the same
 bare-key-or-URL rule as a stub's `image`.
 
-## Turning a title into places
+## Anime locations — ask us before you search
 
-This is a recipe, not an endpoint. When the user names a movie, anime or show and
-wants the places it was filmed at or based on, **your own web search does the
-finding** — on your tokens — and the API does the place lookup, photos and the
-shareable view.
+When the user names an anime and wants the real places, **we may already hold
+them**, geocoded, with the frame from the show and a Street View link at the
+angle it was drawn from. 280 titles, mostly Japan. Both routes are public — no
+key — and answering from them is free, exact, and better than anything a web
+search returns.
+
+It is **two calls, always in that order**, because the slug cannot be guessed
+from the title:
+
+```bash
+# 1. the whole catalogue — ~12 KB of slug + name, edge-cached for a day
+curl -s https://fortypirates.com/api/discover/anime \
+| jq -r '.anime[] | "\(.slug)\t\(.name)\t\(.poiCount)"'
+# your-name        Your Name.                 42
+# yuru-camp-2      Yuru Camp△ Season 2       140
+
+# 2. YOU match what the user said to a name, then fetch that slug
+curl -s https://fortypirates.com/api/discover/anime/your-name \
+| jq '{name, primaryLocation, places: [.pins[] | {title, city, lat, lng, scene, streetView}]}'
+```
+
+**Step 1 is not optional.** There is no `?q=` on the catalogue — it takes no
+parameters at all — and the detail route is an exact key lookup that 404s on
+anything else. `Kimi no Na wa` is `your-name`; `Yuru Camp△ Season 2` is
+`yuru-camp-2`. A slug built from the title gets a 404, and a 404 reads as "we
+have not mapped this anime" when we have. Read the list, match it yourself —
+you can resolve "that camping anime" and a substring match cannot.
+
+Each pin carries `lat`/`lng`, `city`, the place's own photo as `image`, the
+**frame from the anime** as `scene`, a `streetView` url at the scene's own
+heading and pitch, and sometimes `episodeNumber`. `image` and `scene` are bare
+R2 keys — prefix `https://cache.contextforce.com/` (see the stub rules above).
+Never put the `scene` on a map pin: the pin is the place, the frame is a fact
+about it.
+
+To keep any of them, pass their **names** to `/api/lists/from-names` — that
+grounds each into the user's own workspace with its own photo.
+
+### When it is not in the list
+
+A live-action film, a show we have not mapped, or a title with no match after
+you have read the catalogue. Then, and only then, the recipe below applies:
+**your own web search does the finding** — on your tokens — and the API does the
+place lookup, photos and the shareable view.
 
 1. **Search the web** for the title plus "filming locations", "real locations",
    or "pilgrimage spots". Read the top results. Each hit becomes a place with a
@@ -540,32 +795,38 @@ shareable view.
 No Forty Pirates search is involved. No new endpoint. The API grounds each name
 to a real place, fetches a photo, and hands back a shareable link.
 
-### Worked example — Your Name (Kimi no Na wa)
+### Worked example — Lost in Translation
+
+A live-action film, so it is not in the anime catalogue and this is the right
+path. (Had the user asked for *Your Name*, `list_anime` would have matched
+`your-name` and handed back 42 mapped places — never web-search a title without
+checking the catalogue first.)
 
 ```bash
 # You searched the web and found these locations. Now save them:
 curl -s -X POST -H "authorization: Bearer $FP" -H 'content-type: application/json' \
   -d '{
-    "name": "Your Name — real locations",
+    "name": "Lost in Translation — real locations",
     "view": "map",
     "near": "Tokyo",
     "ingredients": [
-      {"type":"poi", "name":"Suga Shrine", "city":"Tokyo",
-       "note":"The stairway where Taki and Mitsuha finally meet.",
-       "sourceName":"Japan Guide", "sourceUrl":"https://www.japan-guide.com/e/e2164.html"},
-      {"type":"poi", "name":"Café La Bohème Shinjuku", "city":"Tokyo",
-       "note":"The café where Okudera-senpai and Taki have their date."},
-      {"type":"poi", "name":"Hida Furukawa Station", "city":"Hida, Gifu",
-       "note":"Inspiration for the Itomori train station. The platform and plaza match the film frame for frame."},
-      {"type":"poi", "name":"Hida City Library", "city":"Hida, Gifu",
-       "note":"Where Taki researches the comet disaster."},
-      {"type":"poi", "name":"Lake Suwa", "city":"Suwa, Nagano",
-       "note":"Basis for the crater lake surrounding Itomori."}
+      {"type":"poi", "name":"Park Hyatt Tokyo", "city":"Tokyo",
+       "note":"The hotel the whole film lives in — the New York Bar on the 52nd floor is where Bob and Charlotte meet."},
+      {"type":"poi", "name":"Shibuya Crossing", "city":"Tokyo",
+       "note":"Charlotte crossing alone, the dinosaur on the screen overhead."},
+      {"type":"poi", "name":"Heian Shrine", "city":"Kyoto",
+       "note":"The day trip — Charlotte watching a wedding party in the garden."},
+      {"type":"poi", "name":"Karaokekan Shibuya", "city":"Tokyo",
+       "note":"The karaoke box floor. Room 601 in the film."}
     ]
   }' \
   https://fortypirates.com/api/lists/from-names
-# → { url: "/@you/your-name-real-locations/map", listId: "…", saved: [...], notFound: [], … }
+# → { url: "/@you/lost-in-translation-real-locations/map", listId: "…", saved: [...], notFound: [], … }
 ```
+
+Cite what you actually read — `sourceName` + `sourceUrl` on a place turns its
+`note` into that source's voice, linked, with the site's favicon. Carry the
+article you opened, never a homepage or a url you assembled.
 
 The response hands back `url` (the map), `listUrl`, `mapUrl` and `planUrl` — all
 three views of the same list. See "Building a list" above for the full shape.
@@ -604,6 +865,7 @@ call worked.
 
 | tool | what it does |
 |---|---|
+| `whoami` | Which account this connection resolves to, and what is in it. Call it first. |
 | `search_saved_places` | Search what the user already saved — by name, kind, or both. |
 | `extract_from_url` | Read a video or article into ingredients. Nothing is saved. |
 | `my_lists` | The user's lists, with counts. A trip shows `isTrip`. |
@@ -611,11 +873,28 @@ call worked.
 | `create_list` | Build a new list, map or trip from names. |
 | `add_to_list` | Add members to an existing list. |
 | `remove_from_list` | Remove one member by id. |
+| `set_list_sequence` | Put a list in order, or clear the order. |
+| `set_list_kind` | Say what a list IS — ranked, route, poll, group, event, trip. |
 | `delete_list` | Delete a whole list (destructive). |
 | `get_plan` | Read a trip's day-by-day schedule. |
 | `update_plan` | Put things on days — schedule, move, unschedule. |
 | `delete_plan` | Drop a trip's plan, turning it back into a plain list. |
 | `search_places` | Discover places other people shared — the public side. |
+| `my_people` | The user's friends, and the creators they follow — two lists, never one. |
+| `friends_places` | Where the user's friends have been. Pass a `city`. |
+| `creator_places` | What the creators they follow recommend. A `handle` narrows it to one. |
+| `recommend_places` | Where to go, ranked on the people they trust. |
+| `list_anime` | The anime whose real locations we hold. Call before `get_anime_locations`. |
+| `get_anime_locations` | One anime's real places, by the slug `list_anime` gave you. |
+
+**The social tools are the ones worth reaching for.** `friends_places` answers the
+question nothing else can — "where have my friends been in Kyoto" — and
+`recommend_places` ranks on it. Both scope server-side: pass `city` whenever the user
+named a place, because unscoped they return that person's whole world. Their output
+keeps friends and followed creators apart (`as: "friend" | "following" | "me"`,
+separate `friends[]` and `creators[]`), and so must your answer: "@eatLA has been" is
+a publication's recommendation, "Mia has been" is someone they know. Never add the two
+into one number.
 
 These tools wrap the same workspace verbs documented above, but they are **not** a
 1:1 rename of the HTTP parameters. `search_places` takes `query`, `city`, `near`,
